@@ -4,4 +4,10 @@ services:
     restart: unless-stopped
     ports:
       - "8765:8000"
-    env_file: .env
+    environment:
+      - MM_WEBHOOK_URL=${MM_WEBHOOK_URL}
+      - DATABASE_URL=${DATABASE_URL}
+      - DUTY_PEOPLE=${DUTY_PEOPLE}
+      - POST_HOUR=${POST_HOUR:-9}
+      - POST_MINUTE=${POST_MINUTE:-0}
+      - TZ=${TZ:-Europe/Moscow}
