@@ -4,12 +4,14 @@ from fastapi import FastAPI
 
 from app import state as st
 from app.api.slash import router as slash_router
+from app.db import init_db
 from app.scheduler import scheduler
 from app.services.duty import run_daily_duty
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_db()
     s = st.load()
     scheduler.add_job(
         run_daily_duty,

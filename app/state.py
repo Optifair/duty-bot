@@ -1,11 +1,10 @@
-import json
-import os
 from datetime import date, timedelta
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.config import DEFAULT_POST_HOUR, DEFAULT_POST_MINUTE, DUTY_PEOPLE, STATE_FILE
+from app.config import DEFAULT_POST_HOUR, DEFAULT_POST_MINUTE, DUTY_PEOPLE
+from app.db import get_conn
 
 
 class DutyState(BaseModel):
@@ -18,17 +17,52 @@ class DutyState(BaseModel):
 
 
 def load() -> DutyState:
-    try:
-        with open(STATE_FILE) as f:
-            return DutyState.model_validate(json.load(f))
-    except (FileNotFoundError, json.JSONDecodeError):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT people, duty_index, last_duty_date, skipped_dates, post_hour, post_minute"
+                " FROM duty_state WHERE id = 1"
+            )
+            row = cur.fetchone()
+    if row is None:
         return DutyState()
+    people, duty_index, last_duty_date, skipped_dates, post_hour, post_minute = row
+    return DutyState(
+        people=list(people),
+        duty_index=duty_index,
+        last_duty_date=last_duty_date,
+        skipped_dates=list(skipped_dates or []),
+        post_hour=post_hour,
+        post_minute=post_minute,
+    )
 
 
 def save(state: DutyState) -> None:
-    os.makedirs(os.path.dirname(os.path.abspath(STATE_FILE)), exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(state.model_dump(), f, indent=2)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO duty_state
+                    (id, people, duty_index, last_duty_date, skipped_dates, post_hour, post_minute)
+                VALUES (1, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    people         = EXCLUDED.people,
+                    duty_index     = EXCLUDED.duty_index,
+                    last_duty_date = EXCLUDED.last_duty_date,
+                    skipped_dates  = EXCLUDED.skipped_dates,
+                    post_hour      = EXCLUDED.post_hour,
+                    post_minute    = EXCLUDED.post_minute
+                """,
+                (
+                    state.people,
+                    state.duty_index,
+                    state.last_duty_date,
+                    state.skipped_dates,
+                    state.post_hour,
+                    state.post_minute,
+                ),
+            )
+        conn.commit()
 
 
 # ── Date helpers ──────────────────────────────────────────────────────────────
